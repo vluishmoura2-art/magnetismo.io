@@ -1,0 +1,234 @@
+* {
+  box-sizing: border-box;
+}
+
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 0%, #14141f 0%, #05050a 70%);
+  z-index: 20;
+  transition: opacity 0.25s ease;
+}
+
+.menu-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.menu-card {
+  width: min(90vw, 380px);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.menu-title {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #e8e8f0;
+}
+
+.menu-title span {
+  background: linear-gradient(90deg, #4f8cff, #ff4f8c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.menu-label {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 232, 240, 0.5);
+}
+
+.menu-input {
+  padding: 12px 14px;
+  font-size: 1rem;
+  color: #e8e8f0;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  outline: none;
+}
+
+.menu-input:focus {
+  border-color: #4f8cff;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.swatch {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch.selected {
+  box-shadow: 0 0 0 2px #0a0a0f, 0 0 0 4px #e8e8f0;
+}
+
+.menu-play {
+  margin-top: 18px;
+  padding: 14px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(90deg, #4f8cff, #ff4f8c);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.menu-play:hover {
+  filter: brightness(1.1);
+}
+
+.menu-play:active {
+  transform: scale(0.98);
+}
+
+.menu-hint {
+  margin: 6px 0 0;
+  min-height: 1em;
+  text-align: center;
+  font-size: 0.8rem;
+  color: rgba(232, 232, 240, 0.5);
+}
+
+.hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.hud.hidden {
+  display: none;
+}
+
+.hud-state {
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #e8e8f0;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+.hud-alive {
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: rgba(232, 232, 240, 0.7);
+}
+
+.banner {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translate(-50%, -8px);
+  z-index: 15;
+  text-align: center;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+}
+
+.banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.banner-text {
+  font-size: clamp(1.6rem, 5vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #e8e8f0;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.25);
+}
+
+@media (max-width: 520px) {
+  .menu-card {
+    width: min(92vw, 380px);
+    padding: 24px 20px;
+    border-radius: 16px;
+  }
+
+  .menu-title {
+    font-size: 2rem;
+  }
+
+  .swatches {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .hud {
+    top: 10px;
+    left: 10px;
+  }
+
+  .hud-state {
+    font-size: 0.7rem;
+    padding: 6px 10px;
+  }
+
+  .hud-alive {
+    font-size: 0.68rem;
+    padding: 4px 10px;
+  }
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+  .menu-card {
+    padding: 16px 20px;
+    gap: 6px;
+  }
+
+  .menu-title {
+    font-size: 1.6rem;
+    margin-bottom: 2px;
+  }
+
+  .menu-play {
+    margin-top: 10px;
+    padding: 10px;
+  }
+}
