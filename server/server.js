@@ -136,7 +136,7 @@ wss.on("connection", (ws) => {
     if (!player.room) return;
 
     if (msg.type === "input") {
-      player.room.world.setInput(player.id, msg.ix, msg.iy);
+      player.room.world.setInput(player.id, msg.ix, msg.iy, msg.jump);
     } else if (msg.type === "field") {
       player.room.world.setField(player.id, msg.field);
     }

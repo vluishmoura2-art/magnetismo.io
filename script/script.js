@@ -24,6 +24,8 @@ let offY = 0;
 
 const keys = new Set();
 const moveVec = { x: 0, y: 0 };
+let jumpHeld = false;
+let mode = "topdown";
 let fieldMode = FIELD_OFF;
 let myId = null;
 let myName = "Player";
@@ -32,9 +34,11 @@ let socket = null;
 let started = false;
 let lastIx = 0;
 let lastIy = 0;
+let lastJump = false;
 
 const targetPlayers = new Map();
 let targetGrays = [];
+let targetPlatforms = [];
 let targetBlack = { x: 0, y: 0 };
 let match = { state: "waiting", winnerId: null };
 
@@ -112,8 +116,14 @@ function applySnapshot(snap) {
   targetPlayers.clear();
   for (const p of snap.players) targetPlayers.set(p.id, p);
   targetGrays = snap.grays || [];
+  targetPlatforms = snap.platforms || [];
   if (snap.blackBall) targetBlack = snap.blackBall;
   if (snap.match) match = snap.match;
+  if (snap.mode && snap.mode !== mode) {
+    mode = snap.mode;
+    jumpHeld = false;
+    Controls.setMode(mode);
+  }
 }
 
 function sendInput() {
@@ -128,10 +138,16 @@ function sendInput() {
     if (keys.has("a") || keys.has("arrowleft")) ix -= 1;
     if (keys.has("d") || keys.has("arrowright")) ix += 1;
   }
-  if (Math.abs(ix - lastIx) > 0.05 || Math.abs(iy - lastIy) > 0.05) {
+  const jump = mode === "platformer" ? jumpHeld : false;
+  if (
+    Math.abs(ix - lastIx) > 0.05 ||
+    Math.abs(iy - lastIy) > 0.05 ||
+    jump !== lastJump
+  ) {
     lastIx = ix;
     lastIy = iy;
-    send({ type: "input", ix, iy });
+    lastJump = jump;
+    send({ type: "input", ix, iy, jump });
   }
 }
 
@@ -239,6 +255,16 @@ function draw() {
     circle(g.x, g.y, world.grayR, "#808080");
   }
 
+  if (mode === "platformer") {
+    for (const r of targetPlatforms) {
+      ctx.fillStyle = "#808080";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    }
+  }
+
   drawBlackBall();
 
   const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
@@ -284,8 +310,11 @@ function updateHud() {
   const me = myId !== null ? targetPlayers.get(myId) : null;
 
   let stateText = "Waiting for players...";
-  if (match.state === "playing") stateText = "Survive the black ball";
-  else if (match.state === "roundover") stateText = "Round over";
+  if (match.state === "playing") {
+    stateText = mode === "platformer" ? "Map 2 - Platformer" : "Map 1 - Survive the black ball";
+  } else if (match.state === "roundover") {
+    stateText = "Round over";
+  }
 
   Menu.showHud(stateText, `${alive} / ${total} alive`);
 
@@ -335,17 +364,38 @@ function frame(now) {
 window.addEventListener("resize", resize);
 
 window.addEventListener("keydown", (e) => {
-  if (e.code === "Space") {
+  const key = e.key.toLowerCase();
+
+  if (mode === "platformer") {
+    if (e.code === "Space" || key === "w" || e.key === "ArrowUp") {
+      e.preventDefault();
+      jumpHeld = true;
+      sendInput();
+      return;
+    }
+    if (e.key === "Shift") {
+      e.preventDefault();
+      cycleField();
+      return;
+    }
+  } else if (e.code === "Space") {
     e.preventDefault();
     cycleField();
     return;
   }
-  keys.add(e.key.toLowerCase());
+
+  keys.add(key);
   sendInput();
 });
 
 window.addEventListener("keyup", (e) => {
-  keys.delete(e.key.toLowerCase());
+  const key = e.key.toLowerCase();
+  if (mode === "platformer" && (e.code === "Space" || key === "w" || e.key === "ArrowUp")) {
+    jumpHeld = false;
+    sendInput();
+    return;
+  }
+  keys.delete(key);
   sendInput();
 });
 
@@ -365,8 +415,13 @@ Menu.show();
 Controls.init({
   onMove(ix, iy) {
     moveVec.x = ix;
-    moveVec.y = iy;
+    moveVec.y = mode === "platformer" ? 0 : iy;
     sendInput();
   },
   onField: cycleField,
+  onJump(held) {
+    jumpHeld = held;
+    sendInput();
+  },
 });
+Controls.setMode(mode);

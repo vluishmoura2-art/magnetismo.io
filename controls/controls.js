@@ -6,6 +6,7 @@
 
   let onMove = () => {};
   let onField = () => {};
+  let onJump = () => {};
 
   let active = false;
   let pointerId = null;
@@ -18,11 +19,15 @@
       <div class="joystick">
         <div class="joystick-base"><div class="joystick-knob"></div></div>
       </div>
-      <button class="field-btn" type="button">field</button>`;
+      <div class="action-buttons">
+        <button class="jump-btn" type="button">jump</button>
+        <button class="field-btn" type="button">field</button>
+      </div>`;
 
     base = root.querySelector(".joystick-base");
     knob = root.querySelector(".joystick-knob");
     fieldBtn = root.querySelector(".field-btn");
+    const jumpBtn = root.querySelector(".jump-btn");
 
     base.addEventListener("pointerdown", (e) => {
       active = true;
@@ -58,6 +63,20 @@
       e.preventDefault();
       onField();
     });
+
+    jumpBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      jumpBtn.classList.add("held");
+      onJump(true);
+    });
+    const releaseJump = (e) => {
+      if (e) e.preventDefault();
+      jumpBtn.classList.remove("held");
+      onJump(false);
+    };
+    jumpBtn.addEventListener("pointerup", releaseJump);
+    jumpBtn.addEventListener("pointercancel", releaseJump);
+    jumpBtn.addEventListener("pointerleave", releaseJump);
   }
 
   function update(px, py) {
@@ -78,6 +97,7 @@
       root = options.root || document.getElementById("controls-root");
       onMove = options.onMove || onMove;
       onField = options.onField || onField;
+      onJump = options.onJump || onJump;
       build();
     },
 
@@ -87,6 +107,10 @@
 
     hide() {
       if (root) root.classList.add("hidden");
+    },
+
+    setMode(mode) {
+      if (root) root.classList.toggle("platformer", mode === "platformer");
     },
 
     setFieldMode(mode) {
