@@ -2,8 +2,13 @@ const WORLD_WIDTH = 1280;
 const WORLD_HEIGHT = 720;
 
 const ACCEL = 900;
-const FRICTION = 0.985;
+const FRICTION = 0.995;
 const RESTITUTION = 0.9;
+const IMPULSE_MULT = 1.2;
+const WALL_IMPULSE_MULT = 1.05;
+const SPEED_LIMIT = 1200;
+const OVERLAP_CORRECTION = 1.0;
+const WALL_RESTITUTION = RESTITUTION * WALL_IMPULSE_MULT;
 const REST_THRESHOLD = 90;
 
 const FIELD_OFF = 0;
@@ -27,28 +32,34 @@ const FIELD_STRENGTH = 900;
 const GRAVITY = 2400;
 const JUMP_SPEED = 900;
 const MOVE_ACCEL = 2600;
-const AIR_FRICTION = 0.98;
-const GROUND_FRICTION = 0.8;
-const MAX_FALL = 1200;
-const MAX_RUN = 560;
+const MAX_FALL = SPEED_LIMIT;
 
 const ROUND_OVER_DURATION = 5;
 
 function bounceWalls(body, width, height) {
   if (body.x < body.r) {
     body.x = body.r;
-    if (body.vx < 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0);
+    if (body.vx < 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? WALL_RESTITUTION : 0);
   } else if (body.x > width - body.r) {
     body.x = width - body.r;
-    if (body.vx > 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0);
+    if (body.vx > 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? WALL_RESTITUTION : 0);
   }
   if (body.y < body.r) {
     body.y = body.r;
-    if (body.vy < 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0);
+    if (body.vy < 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? WALL_RESTITUTION : 0);
   } else if (body.y > height - body.r) {
     body.y = height - body.r;
-    if (body.vy > 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0);
+    if (body.vy > 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? WALL_RESTITUTION : 0);
     body.onGround = true;
+  }
+}
+
+function clampSpeed(body, limit) {
+  const s = Math.hypot(body.vx, body.vy);
+  if (s > limit) {
+    const k = limit / s;
+    body.vx *= k;
+    body.vy *= k;
   }
 }
 
@@ -63,7 +74,7 @@ function collideBodies(a, b) {
   const nx = dx / dist;
   const ny = dy / dist;
   const totalM = a.m + b.m;
-  const overlap = minDist - dist;
+  const overlap = (minDist - dist) * OVERLAP_CORRECTION;
 
   a.x += nx * overlap * (b.m / totalM);
   a.y += ny * overlap * (b.m / totalM);
@@ -73,7 +84,7 @@ function collideBodies(a, b) {
   const vn = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
   if (vn < 0) {
     const e = Math.abs(vn) > REST_THRESHOLD ? RESTITUTION : 0;
-    const j = (-(1 + e) * vn) / (1 / a.m + 1 / b.m);
+    const j = ((-(1 + e) * vn) / (1 / a.m + 1 / b.m)) * IMPULSE_MULT;
     a.vx += (j / a.m) * nx;
     a.vy += (j / a.m) * ny;
     b.vx -= (j / b.m) * nx;
@@ -94,8 +105,8 @@ function collidePlatform(body, rect) {
     const top = body.y - rect.y;
     const bottom = rect.y + rect.h - body.y;
     const m = Math.min(left, right, top, bottom);
-    const ex = Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0;
-    const ey = Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0;
+    const ex = Math.abs(body.vx) > REST_THRESHOLD ? WALL_RESTITUTION : 0;
+    const ey = Math.abs(body.vy) > REST_THRESHOLD ? WALL_RESTITUTION : 0;
     if (m === left) {
       body.x = rect.x - body.r;
       if (body.vx > 0) body.vx = -body.vx * ex;
@@ -116,12 +127,12 @@ function collidePlatform(body, rect) {
   if (dist < body.r) {
     const nx = dx / dist;
     const ny = dy / dist;
-    const overlap = body.r - dist;
+    const overlap = (body.r - dist) * OVERLAP_CORRECTION;
     body.x += nx * overlap;
     body.y += ny * overlap;
     const vn = body.vx * nx + body.vy * ny;
     if (vn < 0) {
-      const e = Math.abs(vn) > REST_THRESHOLD ? RESTITUTION : 0;
+      const e = Math.abs(vn) > REST_THRESHOLD ? WALL_RESTITUTION : 0;
       body.vx -= (1 + e) * vn * nx;
       body.vy -= (1 + e) * vn * ny;
     }
@@ -335,9 +346,7 @@ class World {
         p.jumpPrev = p.jump;
         p.vy += GRAVITY * dt;
         if (p.vy > MAX_FALL) p.vy = MAX_FALL;
-        p.vx *= p.onGround ? GROUND_FRICTION : AIR_FRICTION;
-        if (p.vx > MAX_RUN) p.vx = MAX_RUN;
-        if (p.vx < -MAX_RUN) p.vx = -MAX_RUN;
+        p.vx *= FRICTION;
       } else {
         if (p.ix !== 0 || p.iy !== 0) {
           const len = Math.hypot(p.ix, p.iy);
@@ -399,6 +408,9 @@ class World {
         }
       }
     }
+
+    for (const p of alive) clampSpeed(p, SPEED_LIMIT);
+    for (const g of this.grays) clampSpeed(g, SPEED_LIMIT);
   }
 
   stepBlackBall(dt) {
