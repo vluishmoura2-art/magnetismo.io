@@ -1,10 +1,10 @@
 const WORLD_WIDTH = 1280;
 const WORLD_HEIGHT = 720;
 
-const ACCEL = 1600;
+const ACCEL = 900;
 const FRICTION = 0.985;
-const RESTITUTION = 0.75;
-const MAX_SPEED = 700;
+const RESTITUTION = 0.9;
+const REST_THRESHOLD = 90;
 
 const FIELD_OFF = 0;
 const FIELD_ATTRACT = 1;
@@ -37,34 +37,17 @@ const ROUND_OVER_DURATION = 5;
 function bounceWalls(body, width, height) {
   if (body.x < body.r) {
     body.x = body.r;
-    body.vx = Math.abs(body.vx) * RESTITUTION;
+    if (body.vx < 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0);
   } else if (body.x > width - body.r) {
     body.x = width - body.r;
-    body.vx = -Math.abs(body.vx) * RESTITUTION;
+    if (body.vx > 0) body.vx = -body.vx * (Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0);
   }
   if (body.y < body.r) {
     body.y = body.r;
-    body.vy = Math.abs(body.vy) * RESTITUTION;
+    if (body.vy < 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0);
   } else if (body.y > height - body.r) {
     body.y = height - body.r;
-    body.vy = -Math.abs(body.vy) * RESTITUTION;
-  }
-}
-
-function clampWallsSolid(body, width, height) {
-  if (body.x < body.r) {
-    body.x = body.r;
-    if (body.vx < 0) body.vx = 0;
-  } else if (body.x > width - body.r) {
-    body.x = width - body.r;
-    if (body.vx > 0) body.vx = 0;
-  }
-  if (body.y < body.r) {
-    body.y = body.r;
-    if (body.vy < 0) body.vy = 0;
-  } else if (body.y > height - body.r) {
-    body.y = height - body.r;
-    if (body.vy > 0) body.vy = 0;
+    if (body.vy > 0) body.vy = -body.vy * (Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0);
     body.onGround = true;
   }
 }
@@ -89,7 +72,8 @@ function collideBodies(a, b) {
 
   const vn = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
   if (vn < 0) {
-    const j = (-(1 + RESTITUTION) * vn) / (1 / a.m + 1 / b.m);
+    const e = Math.abs(vn) > REST_THRESHOLD ? RESTITUTION : 0;
+    const j = (-(1 + e) * vn) / (1 / a.m + 1 / b.m);
     a.vx += (j / a.m) * nx;
     a.vy += (j / a.m) * ny;
     b.vx -= (j / b.m) * nx;
@@ -110,19 +94,21 @@ function collidePlatform(body, rect) {
     const top = body.y - rect.y;
     const bottom = rect.y + rect.h - body.y;
     const m = Math.min(left, right, top, bottom);
+    const ex = Math.abs(body.vx) > REST_THRESHOLD ? RESTITUTION : 0;
+    const ey = Math.abs(body.vy) > REST_THRESHOLD ? RESTITUTION : 0;
     if (m === left) {
       body.x = rect.x - body.r;
-      if (body.vx > 0) body.vx = 0;
+      if (body.vx > 0) body.vx = -body.vx * ex;
     } else if (m === right) {
       body.x = rect.x + rect.w + body.r;
-      if (body.vx < 0) body.vx = 0;
+      if (body.vx < 0) body.vx = -body.vx * ex;
     } else if (m === top) {
       body.y = rect.y - body.r;
-      if (body.vy > 0) body.vy = 0;
+      if (body.vy > 0) body.vy = -body.vy * ey;
       body.onGround = true;
     } else {
       body.y = rect.y + rect.h + body.r;
-      if (body.vy < 0) body.vy = 0;
+      if (body.vy < 0) body.vy = -body.vy * ey;
     }
     return;
   }
@@ -135,8 +121,9 @@ function collidePlatform(body, rect) {
     body.y += ny * overlap;
     const vn = body.vx * nx + body.vy * ny;
     if (vn < 0) {
-      body.vx -= vn * nx;
-      body.vy -= vn * ny;
+      const e = Math.abs(vn) > REST_THRESHOLD ? RESTITUTION : 0;
+      body.vx -= (1 + e) * vn * nx;
+      body.vy -= (1 + e) * vn * ny;
     }
     if (ny < -0.5) body.onGround = true;
   }
@@ -359,11 +346,6 @@ class World {
         }
         p.vx *= FRICTION;
         p.vy *= FRICTION;
-        const s = Math.hypot(p.vx, p.vy);
-        if (s > MAX_SPEED) {
-          p.vx = (p.vx / s) * MAX_SPEED;
-          p.vy = (p.vy / s) * MAX_SPEED;
-        }
       }
     }
 
@@ -393,7 +375,7 @@ class World {
 
     if (platformer) {
       for (const p of alive) p.onGround = false;
-      for (const p of alive) clampWallsSolid(p, this.width, this.height);
+      for (const p of alive) bounceWalls(p, this.width, this.height);
       for (const p of alive) {
         for (const rect of this.platforms) collidePlatform(p, rect);
       }
