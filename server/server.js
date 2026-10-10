@@ -7,7 +7,7 @@ const { worldInfo } = require("./physics");
 
 const PORT = process.env.PORT || 4444;
 const ROOT = path.join(__dirname, "..");
-const TICK_MS = 1000 / 60;
+const TICK_MS = 1000 / 30;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -152,19 +152,27 @@ wss.on("connection", (ws) => {
   });
 });
 
-let lastTick = Date.now();
+let accumulator = 0;
+const MAX_DT = 0.1;
+let lastTick = performance.now();
 
-setInterval(() => {
-  const now = Date.now();
-  const dt = Math.min((now - lastTick) / 1000, 0.05);
+function tickLoop() {
+  const now = performance.now();
+  accumulator += now - lastTick;
   lastTick = now;
+  accumulator = Math.min(accumulator, MAX_DT * 2000);
 
-  for (const room of manager.activeRooms()) {
-    if (room.world.players.size === 0) continue;
-    room.world.step(dt);
-    broadcast(room, { type: "snapshot", ...room.world.snapshot() });
+  while (accumulator >= TICK_MS) {
+    accumulator -= TICK_MS;
+    for (const room of manager.activeRooms()) {
+      if (room.world.players.size === 0) continue;
+      room.world.step(TICK_MS / 1000);
+      broadcast(room, { type: "snapshot", ...room.world.snapshot() });
+    }
   }
-}, TICK_MS);
+  setImmediate(tickLoop);
+}
+tickLoop();
 
 server.listen(PORT, () => {
   console.log(`magnet.io server listening on http://localhost:${PORT}`);

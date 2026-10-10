@@ -3,7 +3,7 @@ const WORLD_HEIGHT = 720;
 
 const ACCEL = 900;
 const FRICTION = 0.995;
-const RESTITUTION = 0.9;
+const RESTITUTION = 0.75;
 const IMPULSE_MULT = 1.2;
 const WALL_IMPULSE_MULT = 1.05;
 const SPEED_LIMIT = 1200;
@@ -29,7 +29,7 @@ const PLAYER_MASS = 1;
 const GRAY_MASS = 5;
 const FIELD_STRENGTH = 900;
 
-const GRAVITY = 2400;
+const GRAVITY = 350;
 const JUMP_SPEED = 900;
 const MOVE_ACCEL = 2600;
 const MAX_FALL = SPEED_LIMIT;
@@ -353,6 +353,8 @@ class World {
           p.vx += (p.ix / len) * ACCEL * dt;
           p.vy += (p.iy / len) * ACCEL * dt;
         }
+        p.vy += GRAVITY * dt;
+        if (p.vy > MAX_FALL) p.vy = MAX_FALL;
         p.vx *= FRICTION;
         p.vy *= FRICTION;
       }
@@ -369,6 +371,8 @@ class World {
     }
 
     for (const g of this.grays) {
+      g.vy += GRAVITY * dt;
+      if (g.vy > MAX_FALL) g.vy = MAX_FALL;
       g.vx *= FRICTION;
       g.vy *= FRICTION;
     }
