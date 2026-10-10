@@ -1,7 +1,6 @@
 const WORLD_WIDTH = 1280;
 const WORLD_HEIGHT = 720;
 
-const ACCEL = 900;
 const FRICTION = 0.995;
 const RESTITUTION = 0.75;
 const IMPULSE_MULT = 1.2;
@@ -11,14 +10,9 @@ const OVERLAP_CORRECTION = 1.0;
 const WALL_RESTITUTION = RESTITUTION * WALL_IMPULSE_MULT;
 const REST_THRESHOLD = 90;
 
-const FIELD_OFF = 0;
-const FIELD_ATTRACT = 1;
-const FIELD_REPEL = 2;
-
 const MIN_DIM = Math.min(WORLD_WIDTH, WORLD_HEIGHT);
 const PLAYER_R = MIN_DIM * 0.04;
 const GRAY_R = MIN_DIM * 0.07;
-const FIELD_R = MIN_DIM * 0.3;
 const MARGIN = MIN_DIM * 0.12;
 
 const BLACK_R = MIN_DIM * 0.045;
@@ -26,8 +20,12 @@ const BLACK_WANDER = 900;
 const BLACK_SPEED = 240;
 
 const PLAYER_MASS = 1;
+const MIN_MASS = 0.2;
+const MAX_MASS = 5;
+const MASS_UP_RATE = 1.0;
+const DRAIN_RATE = 0.8;
+const MOVE_FORCE = 900;
 const GRAY_MASS = 5;
-const FIELD_STRENGTH = 900;
 
 const GRAVITY = 350;
 const JUMP_SPEED = 900;
@@ -35,6 +33,14 @@ const MOVE_ACCEL = 2600;
 const MAX_FALL = SPEED_LIMIT;
 
 const ROUND_OVER_DURATION = 5;
+
+function playerRadius(mass) {
+  return PLAYER_R * Math.sqrt(mass);
+}
+
+function motionFriction(mass) {
+  return 1 - (1 - FRICTION) / mass;
+}
 
 function bounceWalls(body, width, height) {
   if (body.x < body.r) {
@@ -140,17 +146,6 @@ function collidePlatform(body, rect) {
   }
 }
 
-function applyFieldForce(source, target, dir, dt) {
-  const dx = source.x - target.x;
-  const dy = source.y - target.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist > FIELD_R || dist === 0) return;
-  const falloff = 1 - dist / FIELD_R;
-  const f = dir * FIELD_STRENGTH * falloff;
-  target.vx += (dx / dist) * f * dt;
-  target.vy += (dy / dist) * f * dt;
-}
-
 function buildPlatforms() {
   return [
     { x: 0, y: 660, w: 1280, h: 60 },
@@ -221,14 +216,14 @@ class World {
       y: spawn.y,
       vx: 0,
       vy: 0,
-      r: PLAYER_R,
+      r: playerRadius(PLAYER_MASS),
       m: PLAYER_MASS,
       ix: 0,
       iy: 0,
       jump: false,
       jumpPrev: false,
       onGround: false,
-      field: FIELD_OFF,
+      drainId: null,
       alive: this.match.state !== "playing",
     };
     this.players.set(id, player);
@@ -264,20 +259,15 @@ class World {
     return n;
   }
 
-  setInput(id, ix, iy, jump) {
+  setInput(id, ix, iy, jump, massUp, drainId) {
     const p = this.players.get(id);
     if (!p || !p.alive) return;
     p.ix = Math.max(-1, Math.min(1, ix || 0));
     p.iy = Math.max(-1, Math.min(1, iy || 0));
     p.jump = !!jump;
-  }
-
-  setField(id, field) {
-    const p = this.players.get(id);
-    if (!p || !p.alive) return;
-    if (field === FIELD_ATTRACT || field === FIELD_REPEL || field === FIELD_OFF) {
-      p.field = field;
-    }
+    p.massUp = !!massUp;
+    const targetId = Number.isFinite(drainId) ? drainId : null;
+    p.drainId = targetId !== p.id ? targetId : null;
   }
 
   startRound() {
@@ -296,7 +286,10 @@ class World {
       p.jump = false;
       p.jumpPrev = false;
       p.onGround = false;
-      p.field = FIELD_OFF;
+      p.m = PLAYER_MASS;
+      p.r = playerRadius(p.m);
+      p.massUp = false;
+      p.drainId = null;
     }
     this.placePlayers();
     this.match.state = "playing";
@@ -340,34 +333,31 @@ class World {
     const platformer = this.mode === "platformer";
 
     for (const p of alive) {
+      p.r = playerRadius(p.m);
+      if (p.massUp) p.m = Math.min(MAX_MASS, p.m + MASS_UP_RATE * dt);
+    }
+    this.stepDrain(dt);
+
+    for (const p of alive) {
+      const fric = motionFriction(p.m);
       if (platformer) {
-        if (p.ix !== 0) p.vx += p.ix * MOVE_ACCEL * dt;
+        if (p.ix !== 0) p.vx += p.ix * (MOVE_ACCEL / p.m) * dt;
         if (p.jump && !p.jumpPrev && p.onGround) p.vy = -JUMP_SPEED;
         p.jumpPrev = p.jump;
         p.vy += GRAVITY * dt;
         if (p.vy > MAX_FALL) p.vy = MAX_FALL;
-        p.vx *= FRICTION;
+        p.vx *= fric;
       } else {
         if (p.ix !== 0 || p.iy !== 0) {
           const len = Math.hypot(p.ix, p.iy);
-          p.vx += (p.ix / len) * ACCEL * dt;
-          p.vy += (p.iy / len) * ACCEL * dt;
+          p.vx += (p.ix / len) * (MOVE_FORCE / p.m) * dt;
+          p.vy += (p.iy / len) * (MOVE_FORCE / p.m) * dt;
         }
         p.vy += GRAVITY * dt;
         if (p.vy > MAX_FALL) p.vy = MAX_FALL;
-        p.vx *= FRICTION;
-        p.vy *= FRICTION;
+        p.vx *= fric;
+        p.vy *= fric;
       }
-    }
-
-    for (const p of alive) {
-      if (p.field === FIELD_OFF) continue;
-      const dir = p.field === FIELD_ATTRACT ? 1 : -1;
-      for (const q of alive) {
-        if (q === p) continue;
-        applyFieldForce(p, q, dir, dt);
-      }
-      for (const g of this.grays) applyFieldForce(p, g, dir, dt);
     }
 
     for (const g of this.grays) {
@@ -417,6 +407,29 @@ class World {
     for (const g of this.grays) clampSpeed(g, SPEED_LIMIT);
   }
 
+  stepDrain(dt) {
+    for (const p of this.alivePlayers()) {
+      if (p.drainId == null) continue;
+      const v = this.players.get(p.drainId);
+      if (!v || v.id === p.id || !v.alive) {
+        p.drainId = null;
+        continue;
+      }
+      const maxGain = 2 * v.m - p.m;
+      if (maxGain <= 0) {
+        p.drainId = null;
+        continue;
+      }
+      const transfer = Math.min(DRAIN_RATE * dt, maxGain / 3, v.m - MIN_MASS);
+      if (transfer <= 0) {
+        p.drainId = null;
+        continue;
+      }
+      p.m += transfer;
+      v.m -= transfer;
+    }
+  }
+
   stepBlackBall(dt) {
     const bb = this.blackBall;
     bb.vx += (Math.random() - 0.5) * BLACK_WANDER * dt;
@@ -438,7 +451,7 @@ class World {
         p.alive = false;
         p.vx = 0;
         p.vy = 0;
-        p.field = FIELD_OFF;
+        p.drainId = null;
       }
     }
   }
@@ -455,7 +468,9 @@ class World {
         y: p.y,
         vx: p.vx,
         vy: p.vy,
-        field: p.field,
+        m: p.m,
+        r: p.r,
+        drainId: p.drainId,
         alive: p.alive,
       })),
       grays: this.grays.map((g) => ({ x: g.x, y: g.y })),
@@ -472,7 +487,6 @@ function worldInfo() {
     height: WORLD_HEIGHT,
     playerR: PLAYER_R,
     grayR: GRAY_R,
-    fieldR: FIELD_R,
     blackR: BLACK_R,
   };
 }
@@ -480,7 +494,4 @@ function worldInfo() {
 module.exports = {
   World,
   worldInfo,
-  FIELD_OFF,
-  FIELD_ATTRACT,
-  FIELD_REPEL,
 };

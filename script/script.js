@@ -1,9 +1,6 @@
 const canvas = document.getElementById("field");
 const ctx = canvas.getContext("2d");
 
-const FIELD_OFF = 0;
-const FIELD_ATTRACT = 1;
-const FIELD_REPEL = 2;
 const TWO_PI = Math.PI * 2;
 
 const world = {
@@ -11,7 +8,6 @@ const world = {
   height: 720,
   playerR: 28.8,
   grayR: 50.4,
-  fieldR: 216,
   blackR: 32.4,
 };
 
@@ -25,16 +21,22 @@ let offY = 0;
 const keys = new Set();
 const moveVec = { x: 0, y: 0 };
 let jumpHeld = false;
+let massHeld = false;
 let mode = "topdown";
-let fieldMode = FIELD_OFF;
 let myId = null;
 let myName = "Player";
 let myColor = "#ff3b3b";
 let socket = null;
 let started = false;
+
+const pointer = { down: false, x: 0, y: 0 };
+let drainId = null;
+
 let lastIx = 0;
 let lastIy = 0;
 let lastJump = false;
+let lastMassUp = false;
+let lastDrainId = null;
 
 const targetPlayers = new Map();
 let targetGrays = [];
@@ -66,7 +68,6 @@ function startGame(name, color) {
   started = true;
   Menu.hide();
   Controls.show();
-  Controls.setFieldMode(fieldMode);
   connect();
 }
 
@@ -122,6 +123,7 @@ function applySnapshot(snap) {
   if (snap.mode && snap.mode !== mode) {
     mode = snap.mode;
     jumpHeld = false;
+    massHeld = false;
     Controls.setMode(mode);
   }
 }
@@ -142,19 +144,39 @@ function sendInput() {
   if (
     Math.abs(ix - lastIx) > 0.05 ||
     Math.abs(iy - lastIy) > 0.05 ||
-    jump !== lastJump
+    jump !== lastJump ||
+    massHeld !== lastMassUp ||
+    drainId !== lastDrainId
   ) {
     lastIx = ix;
     lastIy = iy;
     lastJump = jump;
-    send({ type: "input", ix, iy, jump });
+    lastMassUp = massHeld;
+    lastDrainId = drainId;
+    send({ type: "input", ix, iy, jump, massUp: massHeld, drainId });
   }
 }
 
-function cycleField() {
-  fieldMode = (fieldMode + 1) % 3;
-  Controls.setFieldMode(fieldMode);
-  send({ type: "field", field: fieldMode });
+function updateDrain() {
+  if (!pointer.down || match.state !== "playing") {
+    drainId = null;
+    return;
+  }
+  const wx = (pointer.x - offX) / scale;
+  const wy = (pointer.y - offY) / scale;
+  let best = null;
+  let bestDist = Infinity;
+  for (const [id, t] of targetPlayers) {
+    if (id === myId || !t.alive) continue;
+    const s = shownPlayers.get(id) || { x: t.x, y: t.y };
+    const r = t.r || world.playerR;
+    const d = Math.hypot(wx - s.x, wy - s.y);
+    if (d <= r && d < bestDist) {
+      best = id;
+      bestDist = d;
+    }
+  }
+  drainId = best;
 }
 
 function update(dt) {
@@ -193,21 +215,6 @@ function circle(x, y, r, fill) {
   ctx.fill();
 }
 
-function drawField(x, y, mode) {
-  if (mode !== FIELD_ATTRACT && mode !== FIELD_REPEL) return;
-  ctx.beginPath();
-  ctx.arc(x, y, world.fieldR, 0, TWO_PI);
-  ctx.fillStyle =
-    mode === FIELD_ATTRACT ? "rgba(79, 140, 255, 0.10)" : "rgba(255, 79, 140, 0.10)";
-  ctx.fill();
-  ctx.strokeStyle =
-    mode === FIELD_ATTRACT ? "rgba(79, 140, 255, 0.6)" : "rgba(255, 79, 140, 0.6)";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([8, 8]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
 function drawBlackBall() {
   const r = world.blackR;
   const x = shownBlack.x;
@@ -225,7 +232,7 @@ function drawBlackBall() {
   ctx.stroke();
 }
 
-function drawName(x, y, name, color, glow) {
+function drawName(x, y, name, color, glow, r) {
   ctx.font = "600 20px Segoe UI, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
@@ -234,8 +241,41 @@ function drawName(x, y, name, color, glow) {
     ctx.shadowBlur = 18;
   }
   ctx.fillStyle = color;
-  ctx.fillText(name, x, y - world.playerR - 8);
+  ctx.fillText(name, x, y - r - 8);
   ctx.shadowBlur = 0;
+}
+
+function drawMass(x, y, mass, color) {
+  ctx.font = "700 13px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.fillText(mass.toFixed(1), x, y + 16);
+}
+
+function drawDrains(pulse) {
+  for (const [id, t] of targetPlayers) {
+    if (!t.alive || t.drainId == null) continue;
+    const v = targetPlayers.get(t.drainId);
+    if (!v || !v.alive) continue;
+    const a = shownPlayers.get(id) || { x: t.x, y: t.y };
+    const b = shownPlayers.get(v.id) || { x: v.x, y: v.y };
+
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = "rgba(255, 220, 96, 0.7)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, (v.r || world.playerR) + 8 + pulse * 4, 0, TWO_PI);
+    ctx.strokeStyle = "rgba(255, 96, 96, 0.85)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
 }
 
 function draw() {
@@ -268,21 +308,17 @@ function draw() {
   drawBlackBall();
 
   const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
+  drawDrains(pulse);
 
   for (const [id, t] of targetPlayers) {
     if (!t.alive) continue;
     const s = shownPlayers.get(id) || { x: t.x, y: t.y };
-    drawField(s.x, s.y, t.field);
-  }
-
-  for (const [id, t] of targetPlayers) {
-    if (!t.alive) continue;
-    const s = shownPlayers.get(id) || { x: t.x, y: t.y };
+    const r = t.r || world.playerR;
     const isWinner = match.state === "roundover" && match.winnerId === id;
 
     if (isWinner) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, world.playerR + 10 + pulse * 6, 0, TWO_PI);
+      ctx.arc(s.x, s.y, r + 10 + pulse * 6, 0, TWO_PI);
       ctx.strokeStyle = t.color;
       ctx.lineWidth = 4;
       ctx.globalAlpha = 0.5 + pulse * 0.5;
@@ -290,14 +326,15 @@ function draw() {
       ctx.globalAlpha = 1;
     }
 
-    circle(s.x, s.y, world.playerR, t.color);
+    circle(s.x, s.y, r, t.color);
     ctx.beginPath();
-    ctx.arc(s.x, s.y, world.playerR, 0, TWO_PI);
+    ctx.arc(s.x, s.y, r, 0, TWO_PI);
     ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    drawName(s.x, s.y, t.name, t.color, isWinner);
+    drawName(s.x, s.y, t.name, t.color, isWinner, r);
+    drawMass(s.x, s.y, t.m, t.color);
   }
 
   ctx.restore();
@@ -316,7 +353,12 @@ function updateHud() {
     stateText = "Round over";
   }
 
-  Menu.showHud(stateText, `${alive} / ${total} alive`);
+  const sub =
+    match.state === "playing" && me
+      ? `${alive} / ${total} alive  ·  MASS ${me.m.toFixed(1)}  (hold Space/Shift = heavier, hold click on a ball = steal mass)`
+      : `${alive} / ${total} alive`;
+
+  Menu.showHud(stateText, sub);
 
   let key = "none";
   let text = "";
@@ -356,10 +398,44 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   update(dt);
+  updateDrain();
+  sendInput();
   draw();
   updateHud();
   requestAnimationFrame(frame);
 }
+
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = e.clientX - rect.left;
+  pointer.y = e.clientY - rect.top;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
+  e.preventDefault();
+  pointer.down = true;
+  canvasPos(e);
+  updateDrain();
+  sendInput();
+});
+canvas.addEventListener("pointermove", (e) => {
+  canvasPos(e);
+  if (pointer.down) {
+    updateDrain();
+    sendInput();
+  }
+});
+const endPointer = (e) => {
+  if (!pointer.down) return;
+  pointer.down = false;
+  updateDrain();
+  sendInput();
+};
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+canvas.addEventListener("pointerleave", endPointer);
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
 window.addEventListener("resize", resize);
 
@@ -375,12 +451,14 @@ window.addEventListener("keydown", (e) => {
     }
     if (e.key === "Shift") {
       e.preventDefault();
-      cycleField();
+      massHeld = true;
+      sendInput();
       return;
     }
   } else if (e.code === "Space") {
     e.preventDefault();
-    cycleField();
+    massHeld = true;
+    sendInput();
     return;
   }
 
@@ -390,8 +468,19 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   const key = e.key.toLowerCase();
-  if (mode === "platformer" && (e.code === "Space" || key === "w" || e.key === "ArrowUp")) {
-    jumpHeld = false;
+  if (mode === "platformer") {
+    if (e.code === "Space" || key === "w" || e.key === "ArrowUp") {
+      jumpHeld = false;
+      sendInput();
+      return;
+    }
+    if (e.key === "Shift") {
+      massHeld = false;
+      sendInput();
+      return;
+    }
+  } else if (e.code === "Space") {
+    massHeld = false;
     sendInput();
     return;
   }
@@ -418,9 +507,12 @@ Controls.init({
     moveVec.y = mode === "platformer" ? 0 : iy;
     sendInput();
   },
-  onField: cycleField,
   onJump(held) {
     jumpHeld = held;
+    sendInput();
+  },
+  onMass(held) {
+    massHeld = held;
     sendInput();
   },
 });

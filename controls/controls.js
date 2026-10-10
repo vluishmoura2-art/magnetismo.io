@@ -2,11 +2,11 @@
   let root = null;
   let base = null;
   let knob = null;
-  let fieldBtn = null;
+  let heavyBtn = null;
 
   let onMove = () => {};
-  let onField = () => {};
   let onJump = () => {};
+  let onMass = () => {};
 
   let active = false;
   let pointerId = null;
@@ -21,12 +21,12 @@
       </div>
       <div class="action-buttons">
         <button class="jump-btn" type="button">jump</button>
-        <button class="field-btn" type="button">field</button>
+        <button class="heavy-btn" type="button">heavy</button>
       </div>`;
 
     base = root.querySelector(".joystick-base");
     knob = root.querySelector(".joystick-knob");
-    fieldBtn = root.querySelector(".field-btn");
+    heavyBtn = root.querySelector(".heavy-btn");
     const jumpBtn = root.querySelector(".jump-btn");
 
     base.addEventListener("pointerdown", (e) => {
@@ -59,24 +59,24 @@
     base.addEventListener("pointerup", end);
     base.addEventListener("pointercancel", end);
 
-    fieldBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      onField();
-    });
-
-    jumpBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      jumpBtn.classList.add("held");
-      onJump(true);
-    });
-    const releaseJump = (e) => {
-      if (e) e.preventDefault();
-      jumpBtn.classList.remove("held");
-      onJump(false);
+    const press = (btn, cb) => {
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        btn.classList.add("held");
+        cb(true);
+      });
+      const release = (e) => {
+        if (e) e.preventDefault();
+        btn.classList.remove("held");
+        cb(false);
+      };
+      btn.addEventListener("pointerup", release);
+      btn.addEventListener("pointercancel", release);
+      btn.addEventListener("pointerleave", release);
     };
-    jumpBtn.addEventListener("pointerup", releaseJump);
-    jumpBtn.addEventListener("pointercancel", releaseJump);
-    jumpBtn.addEventListener("pointerleave", releaseJump);
+
+    press(jumpBtn, (held) => onJump(held));
+    press(heavyBtn, (held) => onMass(held));
   }
 
   function update(px, py) {
@@ -96,8 +96,8 @@
     init(options) {
       root = options.root || document.getElementById("controls-root");
       onMove = options.onMove || onMove;
-      onField = options.onField || onField;
       onJump = options.onJump || onJump;
+      onMass = options.onMass || onMass;
       build();
     },
 
@@ -111,13 +111,6 @@
 
     setMode(mode) {
       if (root) root.classList.toggle("platformer", mode === "platformer");
-    },
-
-    setFieldMode(mode) {
-      if (!fieldBtn) return;
-      fieldBtn.classList.toggle("attract", mode === 1);
-      fieldBtn.classList.toggle("repel", mode === 2);
-      fieldBtn.textContent = mode === 1 ? "attract" : mode === 2 ? "repel" : "field";
     },
   };
 })();

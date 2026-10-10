@@ -45,7 +45,7 @@ body.touch .controls {
   pointer-events: none;
 }
 
-.field-btn {
+.heavy-btn {
   position: relative;
   z-index: 12;
   width: clamp(84px, 24vw, 120px);
@@ -56,8 +56,8 @@ body.touch .controls {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #e8e8f0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 176, 60, 0.14);
+  border: 2px solid rgba(255, 176, 60, 0.55);
   backdrop-filter: blur(4px);
   touch-action: none;
   -webkit-user-select: none;
@@ -102,20 +102,15 @@ body.touch .controls.platformer .jump-btn {
 }
 
 .jump-btn.held,
-.field-btn.held {
+.heavy-btn.held {
   transform: scale(0.94);
 }
 
-.field-btn:active {
+.heavy-btn:active {
   transform: scale(0.94);
 }
 
-.field-btn.attract {
-  background: rgba(79, 140, 255, 0.22);
-  border-color: rgba(79, 140, 255, 0.8);
-}
-
-.field-btn.repel {
-  background: rgba(255, 79, 140, 0.22);
-  border-color: rgba(255, 79, 140, 0.8);
+.heavy-btn.held {
+  background: rgba(255, 176, 60, 0.3);
+  border-color: rgba(255, 176, 60, 0.9);
 }
